@@ -46,7 +46,7 @@ const towerSpecs = {
     vermelha: { name: 'Brutáne', color: '#e74c3c', price: 300, range: 220, fireRate: 100 },
     laranja: { name: 'Quetina', color: '#e67e22', price: 250, range: 140, fireRate: 60 },
     verde: { name: 'Thietu', color: '#2ecc71', price: 350, range: 160, fireRate: 70 },
-    roxa: { name: 'Vaaruni', color: '#9b59b6', price: 400, range: 110, fireRate: 180 } // Recarga lenta
+    roxa: { name: 'Vaaruni', color: '#9b59b6', price: 400, range: 110, fireRate: 120 }
 };
 
 class Enemy {
@@ -54,142 +54,145 @@ class Enemy {
         this.type = type;
         this.x = path[0].x; this.y = path[0].y;
         this.targetIdx = 1;
-        this.health = (type === 'cavaleiro') ? 300 : (type === 'nobre' ? 120 : 100);
-        if(type === 'clerigo') this.health = 200;
-        this.maxHealth = this.health;
+        this.health = 100; this.maxHealth = 100;
         this.blocked = false;
-        this.isEscorting = false;
-        this.actionTimer = 0;
+        if(type === 'cavaleiro') this.health = 250;
+        if(type === 'clerigo') this.health = 180;
+        this.maxHealth = this.health;
     }
-
     update() {
         if (this.blocked) return;
         let target = path[this.targetIdx];
         let dx = target.x - this.x; let dy = target.y - this.y;
         let dist = Math.hypot(dx, dy);
-
-        // Lógica de Velocidade
-        let baseSpeed = 1.3;
-        if (this.type === 'camponês') baseSpeed = isNight ? 2.8 : 1.3;
-        if (this.type === 'nobre') baseSpeed = isNight ? 0.5 : 0.9;
-        if (this.type === 'cavaleiro') {
-            // Tenta achar um Nobre próximo para escoltar
-            let nobrePerto = enemies.find(en => en.type === 'nobre' && Math.hypot(en.x - this.x, en.y - this.y) < 60);
-            if (nobrePerto) { baseSpeed = nobrePerto.currentSpeed || 0.9; this.isEscorting = true; }
-            else { baseSpeed = isNight ? 0.8 : 1.8; this.isEscorting = false; }
-        }
-        this.currentSpeed = baseSpeed;
-
+        let speed = (isNight && this.type === 'camponês') ? 2.8 : 1.3;
+        if(isNight && this.type !== 'camponês') speed = 0.8;
+        
         if(dist < 5) {
             this.targetIdx++;
             if(this.targetIdx >= path.length) { lives--; this.health = -1; return; }
         }
-        this.x += (dx/dist) * baseSpeed; this.y += (dy/dist) * baseSpeed;
-
-        // Lógica do Clérigo
-        if(this.type === 'clerigo') {
-            this.actionTimer++;
-            if(this.actionTimer > 200) {
-                this.performClericAction();
-                this.actionTimer = 0;
-            }
-        }
-    }
-
-    performClericAction() {
-        if(isNight) {
-            // Noite: Foca em amaldiçoar Molovee
-            let alvo = spots.find(s => s.tower && s.tower.name === 'Molovee');
-            if(alvo) alvo.tower.disabled = 180; // 3 segundos
-        } else {
-            // Dia: Cura aliados
-            enemies.forEach(en => {
-                if(Math.hypot(en.x - this.x, en.y - this.y) < 100) en.health = Math.min(en.maxHealth, en.health + 30);
-            });
-        }
+        this.x += (dx/dist) * speed; this.y += (dy/dist) * speed;
     }
 }
 
 function update() {
     ctx.clearRect(0, 0, 800, 600);
-    document.getElementById('money').innerText = Math.floor(money);
+    document.getElementById('money').innerText = money;
     document.getElementById('lives').innerText = lives;
 
     // Estrada
-    ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 40; ctx.setLineDash([]); ctx.beginPath();
+    ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 40; ctx.beginPath();
     ctx.moveTo(path[0].x, path[0].y); path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
     // Búfalos Vaaruni
     barriers.forEach((b, i) => {
-        ctx.fillStyle = "#d2b48c"; ctx.beginPath(); ctx.ellipse(b.x, b.y, 20, 12, 0, 0, Math.PI*2); ctx.fill();
-        let anyoneHere = false;
+        ctx.fillStyle = "#d2b48c"; ctx.fillRect(b.x-15, b.y-10, 30, 20);
+        let active = false;
         enemies.forEach(en => {
-            if(Math.hypot(en.x - b.x, en.y - b.y) < 25) { en.blocked = true; b.hp -= 0.6; anyoneHere = true; }
+            if(Math.hypot(en.x - b.x, en.y - b.y) < 25) { en.blocked = true; b.hp -= 0.5; active = true; }
         });
-        if(b.hp <= 0) { barriers.splice(i, 1); enemies.forEach(e => e.blocked = false); }
+        if(b.hp <= 0 || !active) { 
+            if(b.hp <= 0) { barriers.splice(i, 1); enemies.forEach(e => e.blocked = false); }
+        }
     });
 
-    // Spots e Torres
+    // Spots
     spots.forEach(s => {
         ctx.fillStyle = "#3e2723"; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
         if(s.tower) {
             let t = s.tower;
-            // Efeito de Maldição
-            if(t.disabled > 0) { t.disabled--; ctx.strokeStyle = "purple"; ctx.lineWidth = 3; ctx.strokeRect(s.x-15, s.y-35, 30, 30); }
-            
             ctx.fillStyle = t.color; ctx.beginPath(); ctx.arc(s.x, s.y-20, 12, 0, Math.PI*2); ctx.fill();
             
-            // Recarga
             let rate = (isNight && (t.name === 'Molovee' || t.name === 'Thietu')) ? 2 : (isNight ? 0.5 : 1);
-            if(t.disabled > 0) rate = 0;
             s.tower.timer += rate;
             
             if(s.tower.timer >= t.fireRate) {
                 let target = enemies.find(en => Math.hypot(en.x - s.x, en.y - s.y) < t.range);
                 if(target) {
-                    if(t.name === 'Vaaruni') {
-                        if(barriers.length < 2) barriers.push({x: target.x, y: target.y, hp: 250});
-                    } else {
-                        projectiles.push({x: s.x, y: s.y-20, target, color: t.color});
-                    }
+                    if(t.name === 'Vaaruni') barriers.push({x: target.x, y: target.y, hp: 200, maxHp: 200});
+                    else projectiles.push({x: s.x, y: s.y-20, target, color: t.color});
                     s.tower.timer = 0;
                 }
             }
-            // Barra de recarga para o Vaaruni
-            if(t.name === 'Vaaruni') {
-                ctx.fillStyle = "gray"; ctx.fillRect(s.x-15, s.y+5, 30, 3);
-                ctx.fillStyle = "white"; ctx.fillRect(s.x-15, s.y+5, 30*(s.tower.timer/t.fireRate), 3);
-            }
             if(s.sellOpen) {
-                ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(s.x+40, s.y-40, 15, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = "white"; ctx.fillText("$", s.x+37, s.y-36);
+                ctx.fillStyle = "black"; ctx.beginPath(); ctx.arc(s.x+40, s.y-40, 15, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "white"; ctx.fillText("X", s.x+36, s.y-36);
             }
         }
         if(s.menuOpen) drawMenu(s);
     });
 
-    // Inimigos
+    // Inimigos e Tiros
     enemies.forEach((e, i) => { 
         e.update(); 
-        ctx.fillStyle = e.type === 'nobre' ? "#f1c40f" : (e.type === 'cavaleiro' ? "#7f8c8d" : (e.type === 'clerigo' ? "#2ecc71" : "#8b4513"));
-        ctx.fillRect(e.x-6, e.y-18, 12, 18);
-        if(e.isEscorting) { ctx.strokeStyle = "white"; ctx.strokeRect(e.x-8, e.y-20, 16, 22); }
-        if(e.health <= 0) { if(e.health !== -1) money += 40; enemies.splice(i, 1); enemies.forEach(en => en.blocked = false); }
+        ctx.fillStyle = e.type === 'camponês' ? "#8b4513" : "#7f8c8d";
+        ctx.fillRect(e.x-5, e.y-15, 10, 15);
+        if(e.health <= 0) { if(e.health !== -1) money += 30; enemies.splice(i, 1); }
     });
 
     projectiles.forEach((p, i) => {
         let dx = p.target.x - p.x; let dy = p.target.y - p.y;
         let dist = Math.hypot(dx, dy);
-        p.x += (dx/dist)*16; p.y += (dy/dist)*16;
+        p.x += (dx/dist)*15; p.y += (dy/dist)*15;
         ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
-        if(dist < 15) { p.target.health -= 30; projectiles.splice(i, 1); }
+        if(dist < 15) { p.target.health -= 25; projectiles.splice(i, 1); }
     });
 
     requestAnimationFrame(update);
 }
 
-// ... (Manter funções drawMenu, addEventListener e startNextWave da versão anterior)
-// Adicione apenas o inimigo 'nobre' e 'clerigo' na função startNextWave para testar
+function drawMenu(s) {
+    const keys = Object.keys(towerSpecs);
+    keys.forEach((k, i) => {
+        let x = s.x + (i < 3 ? (i-1)*55 : (i-4)*55);
+        let y = s.y + (i < 3 ? -65 : 65);
+        ctx.fillStyle = towerSpecs[k].color; ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2); ctx.fill();
+        if(s.selectedType === k) {
+            ctx.fillStyle = "black"; ctx.fillRect(x-20, y-45, 40, 15);
+            ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.fillText("$"+towerSpecs[k].price, x-12, y-33);
+        }
+    });
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left; my = e.clientY - rect.top;
+
+    spots.forEach(s => {
+        let d = Math.hypot(s.x - mx, s.y - my);
+        if(d < 30) {
+            if(!s.tower) { s.menuOpen = !s.menuOpen; s.selectedType = null; }
+            else { s.sellOpen = !s.sellOpen; }
+        } else if(s.menuOpen) {
+            const keys = Object.keys(towerSpecs);
+            keys.forEach((k, i) => {
+                let x = s.x + (i < 3 ? (i-1)*55 : (i-4)*55);
+                let y = s.y + (i < 3 ? -65 : 65);
+                if(Math.hypot(x - mx, y - my) < 22) {
+                    if(s.selectedType === k) {
+                        if(money >= towerSpecs[k].price) {
+                            money -= towerSpecs[k].price;
+                            s.tower = {...towerSpecs[k], timer: 0};
+                            s.menuOpen = false;
+                        }
+                    } else s.selectedType = k;
+                }
+            });
+        } else if(s.sellOpen && Math.hypot(s.x+40-mx, s.y-40-my) < 20) {
+            money += s.tower.price * 0.7; s.tower = null; s.sellOpen = false;
+        }
+    });
+});
+
+function startNextWave() {
+    if(enemies.length > 0) return;
+    currentWave++; isNight = currentWave % 2 === 0;
+    const t = document.getElementById('timeBox');
+    t.innerText = isNight ? "🌙 NOITE" : "☀️ DIA"; t.className = "time-indicator " + (isNight ? "noite" : "dia");
+    for(let i=0; i<6; i++) setTimeout(() => enemies.push(new Enemy('camponês')), i*800);
+}
+update();
 </script>
 </body>
 </html>
