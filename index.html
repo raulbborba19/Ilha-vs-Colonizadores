@@ -2,253 +2,26 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Forest Defense: Edição Final</title>
-    <style>
-        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; }
-        .hud { background: #333; padding: 15px; width: 800px; display: flex; justify-content: space-around; border-bottom: 4px solid #555; }
-        canvas { background: #27ae60; cursor: pointer; border: 4px solid #34495e; margin-top: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        .btn-wave { cursor:pointer; background:#e67e22; border:none; color:white; padding:10px 20px; font-weight:bold; border-radius: 4px; transition: 0.3s; }
-        .btn-wave:hover { background: #d35400; transform: scale(1.05); }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forest Defense: O Templo</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
     <div class="hud">
-        <div>💰 Moedas: <span id="money">600</span></div>
-        <div>❤️ Templo: <span id="lives">10</span></div>
-        <div>🌊 Onda: <span id="waveText">0</span></div>
+        <div class="stat-box">💰 <span id="money">600</span></div>
+        <div class="stat-box">❤️ <span id="lives">10</span></div>
+        <div class="stat-box">🌊 Onda: <span id="waveText">0</span></div>
         <button class="btn-wave" onclick="startNextWave()">PRÓXIMA ONDA</button>
     </div>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
 
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
 
-let money = 600;
-let lives = 10;
-let currentWave = 0;
-let enemies = [];
-let projectiles = [];
+    <div class="controls-hint">
+        Clique no tronco para construir | Clique na torre para vender
+    </div>
 
-const path = [{x: 0, y: 300}, {x: 150, y: 300}, {x: 150, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 750, y: 500}];
-
-const spots = [
-    {x: 80, y: 230, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 220, y: 150, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 400, y: 200, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 520, y: 400, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 350, y: 430, tower: null, menuOpen: false, selectedType: null, sellOpen: false}
-];
-
-const towerSpecs = {
-    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 140, damage: 15, fireRate: 40 },
-    amarela: { name: 'Molovee', color: '#f1c40f', price: 250, range: 110, damage: 10, fireRate: 50 },
-    vermelha: { name: 'Brutáne', color: '#e74c3c', price: 400, range: 220, damage: 60, fireRate: 100 }
-};
-
-function drawPerson(x, y, color, type, scale = 1) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
-    ctx.fillStyle = "#ffdbac";
-    ctx.beginPath(); ctx.arc(0, -25, 7, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = color;
-    ctx.fillRect(-6, -18, 12, 18);
-    if(type === 'Brutáne') {
-        ctx.fillStyle = "pink"; ctx.beginPath(); ctx.arc(-5, -15, 3, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.strokeStyle = "#222"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(-5, 8); ctx.moveTo(3, 0); ctx.lineTo(5, 8); ctx.stroke();
-    ctx.restore();
-}
-
-class Enemy {
-    constructor(type) {
-        this.type = type;
-        this.x = path[0].x; this.y = path[0].y;
-        this.targetIdx = 1;
-        this.health = 60; this.maxHealth = 60; this.speed = 1.4;
-        this.isMarked = false;
-        this.pauseTimer = 0;
-
-        if(type === 'cavaleiro') { this.health = 200; this.maxHealth = 200; this.speed = 0.9; this.isMarked = true; }
-        if(type === 'nobre') { this.health = 100; this.maxHealth = 100; this.speed = 1.2; }
-        if(type === 'clerigo') { this.health = 150; this.maxHealth = 150; this.speed = 0.7; }
-        if(type === 'corte') { this.health = 2000; this.maxHealth = 2000; this.speed = 0.4; }
-    }
-
-    update() {
-        if((this.type === 'clerigo' || this.type === 'corte') && ++this.pauseTimer > 150) {
-            if(this.pauseTimer > 230) this.pauseTimer = 0;
-            return;
-        }
-        let target = path[this.targetIdx];
-        let dx = target.x - this.x; let dy = target.y - this.y;
-        let dist = Math.hypot(dx, dy);
-        if(dist < 5) {
-            this.targetIdx++;
-            if(this.targetIdx >= path.length) { lives--; this.health = -999; return; }
-        }
-        this.x += (dx/dist) * this.speed; this.y += (dy/dist) * this.speed;
-    }
-
-    draw() {
-        if(this.health <= 0 && this.health !== -999) return;
-        let color = "#8B4513";
-        if(this.type === 'cavaleiro') color = "#7f8c8d";
-        if(this.type === 'nobre') color = "#9b59b6";
-        if(this.type === 'clerigo') color = "#2ecc71";
-        
-        if(this.type === 'corte') {
-            ctx.fillStyle = "#5d4037"; ctx.fillRect(this.x-30, this.y-20, 60, 40);
-            drawPerson(this.x, this.y, "#f1c40f", "Rei", 1.5);
-        } else {
-            drawPerson(this.x, this.y, color, this.type);
-        }
-        ctx.fillStyle = 'red'; ctx.fillRect(this.x-15, this.y-45, 30, 4);
-        ctx.fillStyle = 'green'; ctx.fillRect(this.x-15, this.y-45, 30 * (this.health/this.maxHealth), 4);
-    }
-}
-
-class Projectile {
-    constructor(x, y, target, damage, color) {
-        this.x = x; this.y = y; this.target = target;
-        this.damage = damage; this.color = color;
-        this.speed = 8; this.active = true;
-    }
-    update() {
-        let dx = this.target.x - this.x; let dy = this.target.y - this.y;
-        let dist = Math.hypot(dx, dy);
-        if(dist < 10) { this.target.health -= this.damage; this.active = false; return; }
-        this.x += (dx/dist) * this.speed; this.y += (dy/dist) * this.speed;
-    }
-    draw() { ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
-}
-
-canvas.addEventListener('mousedown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    spots.forEach(s => {
-        let d = Math.hypot(s.x - mx, s.y - my);
-        
-        // 1. Clique em tronco vazio
-        if(d < 30 && !s.tower) {
-            s.menuOpen = !s.menuOpen;
-            s.selectedType = null;
-        } 
-        // 2. Clique em torre existente (para vender)
-        else if(d < 30 && s.tower) {
-            s.sellOpen = !s.sellOpen;
-        }
-        // 3. Lógica de Compra
-        else if(s.menuOpen) {
-            const btns = [{x: s.x-50, t: 'azul'}, {x: s.x, t: 'amarela'}, {x: s.x+50, t: 'vermelha'}];
-            btns.forEach(b => {
-                if(Math.hypot(b.x - mx, (s.y-60) - my) < 20) {
-                    if(s.selectedType === b.t) {
-                        if(money >= towerSpecs[b.t].price) {
-                            money -= towerSpecs[b.t].price;
-                            s.tower = {...towerSpecs[b.t], timer: 0};
-                            s.menuOpen = false;
-                            updateHUD();
-                        }
-                    } else { s.selectedType = b.t; }
-                }
-            });
-        }
-        // 4. Lógica de Venda (Lixeira)
-        else if(s.sellOpen) {
-            if(Math.hypot(s.x+40 - mx, (s.y-40) - my) < 15) {
-                money += Math.floor(s.tower.price * 0.7);
-                s.tower = null;
-                s.sellOpen = false;
-                updateHUD();
-            }
-        }
-    });
-});
-
-function updateHUD() {
-    document.getElementById('money').innerText = money;
-    document.getElementById('lives').innerText = lives;
-    document.getElementById('waveText').innerText = currentWave;
-}
-
-function startNextWave() {
-    if(enemies.length > 0) return;
-    currentWave++;
-    updateHUD();
-    let wavePlan = ['camponês', 'camponês'];
-    if(currentWave == 2) wavePlan = ['camponês', 'cavaleiro', 'nobre'];
-    if(currentWave == 3) wavePlan = ['clerigo', 'nobre', 'cavaleiro', 'clerigo'];
-    if(currentWave >= 4) wavePlan = ['cavaleiro', 'corte', 'cavaleiro'];
-    let i = 0;
-    let spawn = setInterval(() => {
-        enemies.push(new Enemy(wavePlan[i++]));
-        if(i >= wavePlan.length) clearInterval(spawn);
-    }, 1200);
-}
-
-function loop() {
-    ctx.clearRect(0, 0, 800, 600);
-    ctx.strokeStyle = '#d35400'; ctx.lineWidth = 40; ctx.beginPath();
-    ctx.moveTo(path[0].x, path[0].y); path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
-    ctx.fillStyle = '#95a5a6'; ctx.fillRect(730, 460, 70, 80);
-
-    spots.forEach(s => {
-        ctx.fillStyle = '#5d4037'; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
-        
-        if(s.tower) {
-            drawPerson(s.x, s.y, s.tower.color, s.tower.name, 1.2);
-            s.tower.timer++;
-            if(s.tower.timer > s.tower.fireRate) {
-                let targets = enemies.filter(en => Math.hypot(en.x - s.x, en.y - s.y) < s.tower.range);
-                let prioritized = targets.filter(en => en.isMarked);
-                let target = prioritized.length > 0 ? prioritized[0] : targets[0];
-                if(target) {
-                    projectiles.push(new Projectile(s.x, s.y-25, target, s.tower.damage, s.tower.color));
-                    s.tower.timer = 0;
-                }
-            }
-            if(s.sellOpen) {
-                ctx.fillStyle = "#7f8c8d"; ctx.beginPath(); ctx.arc(s.x+40, s.y-40, 15, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = "white"; ctx.font = "12px Arial"; ctx.fillText("Vender", s.x+25, s.y-60);
-                ctx.fillText("X", s.x+36, s.y-36);
-            }
-        }
-
-        if(s.menuOpen) {
-            ['azul', 'amarela', 'vermelha'].forEach((type, i) => {
-                let bx = s.x + (i-1)*50; let by = s.y - 60;
-                ctx.fillStyle = towerSpecs[type].color;
-                ctx.beginPath(); ctx.arc(bx, by, 18, 0, Math.PI*2); ctx.fill();
-                if(s.selectedType === type) {
-                    ctx.fillStyle = "black"; ctx.fillRect(bx-25, by-50, 50, 18);
-                    ctx.fillStyle = "white"; ctx.font = "bold 12px Arial";
-                    ctx.fillText("$"+towerSpecs[type].price, bx-15, by-36);
-                    ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
-                }
-            });
-        }
-    });
-
-    enemies.forEach((en, i) => {
-        en.update(); en.draw();
-        if(en.health <= 0) { if(en.health !== -999) money += 30; enemies.splice(i, 1); updateHUD(); }
-    });
-
-    projectiles.forEach((p, i) => {
-        p.update(); p.draw();
-        if(!p.active) projectiles.splice(i, 1);
-    });
-
-    if(lives <= 0) { alert("Fim de Jogo!"); location.reload(); }
-    requestAnimationFrame(loop);
-}
-loop();
-</script>
+    <script src="script.js"></script>
 </body>
 </html>
