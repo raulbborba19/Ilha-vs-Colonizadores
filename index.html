@@ -1,1 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Forest Tower Defense</title>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background: #2c3e50; color: white; font-family: sans-serif; }
+        canvas { background: #27ae60; border: 5px solid #34495e; cursor: crosshair; }
+        .ui { margin-top: 10px; font-size: 20px; }
+    </style>
+</head>
+<body>
+    <div class="ui">Moedas: <span id="money">500</span> | Onda: <span id="wave">1</span></div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
 
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const moneyEl = document.getElementById('money');
+
+        let money = 500;
+        let selectedTronco = null;
+
+        // Configuração do Caminho (Pista de Terra)
+        const path = [{x: 0, y: 300}, {x: 200, y: 300}, {x: 200, y: 100}, {x: 500, y: 100}, {x: 500, y: 500}, {x: 800, y: 500}];
+
+        // Localização dos Troncos (Onde pode construir)
+        const troncos = [
+            {x: 100, y: 200, tower: null, menuOpen: false},
+            {x: 350, y: 200, tower: null, menuOpen: false},
+            {x: 600, y: 400, tower: null, menuOpen: false}
+        ];
+
+        const towerData = {
+            azul: { color: 'blue', price: 150, name: 'Yorph' },
+            amarela: { color: 'yellow', price: 250, name: 'Molovee' },
+            vermelha: { color: 'red', price: 400, name: 'Brutáne' }
+        };
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Desenha a Pista de Terra
+            ctx.strokeStyle = "#d35400";
+            ctx.lineWidth = 40;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            path.forEach(p => ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+
+            // 2. Desenha o Templo (Final)
+            ctx.fillStyle = "#95a5a6";
+            ctx.fillRect(720, 450, 80, 100);
+
+            // 3. Desenha os Troncos e Menus
+            troncos.forEach(t => {
+                // Desenha o tronco (marrom)
+                ctx.fillStyle = "#5d4037";
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (t.tower) {
+                    // Desenha a torre se existir
+                    ctx.fillStyle = t.tower.color;
+                    ctx.fillRect(t.x - 15, t.y - 40, 30, 40);
+                } else if (t.menuOpen) {
+                    // Desenha as 3 bolinhas de escolha
+                    drawMenu(t);
+                }
+            });
+
+            requestAnimationFrame(draw);
+        }
+
+        function drawMenu(t) {
+            const offsets = [{x: -40, c: 'blue'}, {x: 0, c: 'yellow'}, {x: 40, c: 'red'}];
+            offsets.forEach(off => {
+                ctx.fillStyle = off.c;
+                ctx.beginPath();
+                ctx.arc(t.x + off.x, t.y - 50, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "white";
+                ctx.stroke();
+            });
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            troncos.forEach(t => {
+                const dist = Math.hypot(t.x - mouseX, t.y - mouseY);
+                
+                // Se clicar no tronco
+                if (dist < 25 && !t.tower) {
+                    t.menuOpen = !t.menuOpen;
+                } 
+                // Se o menu estiver aberto, checar clique nas bolinhas
+                else if (t.menuOpen) {
+                    checkMenuClick(t, mouseX, mouseY);
+                }
+            });
+        });
+
+        function checkMenuClick(t, mx, my) {
+            const options = [
+                {x: t.x - 40, y: t.y - 50, type: 'azul'},
+                {x: t.x, y: t.y - 50, type: 'amarela'},
+                {x: t.x + 40, y: t.y - 50, type: 'vermelha'}
+            ];
+
+            options.forEach(opt => {
+                const d = Math.hypot(opt.x - mx, opt.y - my);
+                if (d < 15) {
+                    const data = towerData[opt.type];
+                    if (money >= data.price) {
+                        money -= data.price;
+                        t.tower = data;
+                        t.menuOpen = false;
+                        moneyEl.innerText = money;
+                    } else {
+                        alert("Moedas insuficientes!");
+                    }
+                }
+            });
+        }
+
+        draw();
+    </script>
+</body>
+</html>
