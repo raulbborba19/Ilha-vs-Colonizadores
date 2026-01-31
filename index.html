@@ -2,15 +2,15 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Forest Defense: Ciclo das Tribos v2.1</title>
+    <title>Forest Defense: Edição Estabilizada</title>
     <style>
         body { background: #1a1a1a; color: #f0e6d2; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; }
         .hud { background: #3e2723; border-bottom: 5px solid #2b1d19; width: 800px; padding: 15px; display: flex; justify-content: space-around; align-items: center; }
-        .time-indicator { font-weight: bold; padding: 5px 15px; border-radius: 20px; text-transform: uppercase; border: 2px solid rgba(255,255,255,0.2); }
+        .time-indicator { font-weight: bold; padding: 5px 15px; border-radius: 20px; text-transform: uppercase; }
         .dia { background: #f1c40f; color: #000; }
-        .noite { background: #34495e; color: #fff; box-shadow: 0 0 10px #82ccdd; }
-        canvas { border: 8px solid #3e2723; margin-top: 10px; cursor: crosshair; }
-        .night-filter { filter: brightness(0.7) saturate(1.1) hue-rotate(180deg); }
+        .noite { background: #34495e; color: #fff; }
+        canvas { border: 8px solid #3e2723; margin-top: 10px; }
+        .night-filter { filter: brightness(0.7) blue; }
     </style>
 </head>
 <body>
@@ -19,7 +19,7 @@
         <div id="timeBox" class="time-indicator dia">☀️ DIA</div>
         <div>💰 <span id="money">800</span></div>
         <div>❤️ <span id="lives">15</span></div>
-        <button onclick="startNextWave()" style="cursor:pointer; padding:10px 20px; background:#e67e22; border:none; color:white; font-weight:bold; border-radius:4px;">PRÓXIMA ONDA</button>
+        <button onclick="startNextWave()" style="cursor:pointer; padding:10px; background:#e67e22; border:none; color:white; font-weight:bold; border-radius:5px;">PRÓXIMA ONDA</button>
     </div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
 
@@ -33,50 +33,41 @@ let isNight = false;
 
 const path = [{x: 0, y: 300}, {x: 150, y: 300}, {x: 150, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 750, y: 500}];
 const spots = [
-    {x: 80, y: 230, tower: null, menuOpen: false, selectedType: null},
-    {x: 230, y: 160, tower: null, menuOpen: false, selectedType: null},
-    {x: 400, y: 180, tower: null, menuOpen: false, selectedType: null},
-    {x: 520, y: 420, tower: null, menuOpen: false, selectedType: null},
-    {x: 350, y: 420, tower: null, menuOpen: false, selectedType: null}
+    {x: 80, y: 230, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
+    {x: 230, y: 160, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
+    {x: 400, y: 180, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
+    {x: 520, y: 420, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
+    {x: 350, y: 420, tower: null, menuOpen: false, selectedType: null, sellOpen: false}
 ];
 
 const towerSpecs = {
-    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 140, fireRate: 40 },
-    amarela: { name: 'Molovee', color: '#f1c40f', price: 200, range: 120, fireRate: 50 },
+    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 150, fireRate: 40 },
+    amarela: { name: 'Molovee', color: '#f1c40f', price: 200, range: 130, fireRate: 50 },
     vermelha: { name: 'Brutáne', color: '#e74c3c', price: 300, range: 220, fireRate: 100 },
-    laranja: { name: 'Quetina', color: '#e67e22', price: 250, range: 130, fireRate: 60 },
+    laranja: { name: 'Quetina', color: '#e67e22', price: 250, range: 140, fireRate: 60 },
     verde: { name: 'Thietu', color: '#2ecc71', price: 350, range: 160, fireRate: 70 },
-    roxa: { name: 'Vaaruni', color: '#9b59b6', price: 400, range: 100, fireRate: 120 }
+    roxa: { name: 'Vaaruni', color: '#9b59b6', price: 400, range: 110, fireRate: 120 }
 };
 
-// --- LOGICA DOS INIMIGOS ---
 class Enemy {
     constructor(type) {
         this.type = type;
         this.x = path[0].x; this.y = path[0].y;
         this.targetIdx = 1;
         this.health = 100; this.maxHealth = 100;
-        this.isMarked = (type === 'cavaleiro');
         this.blocked = false;
-
         if(type === 'cavaleiro') this.health = 250;
-        if(type === 'nobre') this.health = 120;
         if(type === 'clerigo') this.health = 180;
-        if(type === 'corte') this.health = 2500;
         this.maxHealth = this.health;
     }
-
     update() {
         if (this.blocked) return;
         let target = path[this.targetIdx];
         let dx = target.x - this.x; let dy = target.y - this.y;
         let dist = Math.hypot(dx, dy);
-
-        let speed = 1.3;
-        if(isNight) {
-            speed = (this.type === 'camponês') ? 2.5 : 0.7;
-        }
-
+        let speed = (isNight && this.type === 'camponês') ? 2.8 : 1.3;
+        if(isNight && this.type !== 'camponês') speed = 0.8;
+        
         if(dist < 5) {
             this.targetIdx++;
             if(this.targetIdx >= path.length) { lives--; this.health = -1; return; }
@@ -85,38 +76,6 @@ class Enemy {
     }
 }
 
-// --- FUNÇÃO DE DESENHO DAS TORRES ---
-function drawTower(s) {
-    ctx.save(); ctx.translate(s.x, s.y);
-    const t = s.tower;
-    
-    // Desenho visual
-    ctx.fillStyle = t.color;
-    ctx.beginPath(); ctx.arc(0, -20, 12, 0, Math.PI*2); ctx.fill();
-    
-    // Logica de Tiro
-    let rateMult = 1;
-    if(isNight) {
-        if(t.name === 'Molovee' || t.name === 'Thietu') rateMult = 2;
-        else rateMult = 0.5;
-    }
-
-    s.tower.timer += rateMult;
-    if(s.tower.timer >= t.fireRate) {
-        let target = enemies.find(e => Math.hypot(e.x - s.x, e.y - s.y) < t.range);
-        if(target) {
-            if(t.name === 'Vaaruni') {
-                barriers.push({x: target.x, y: target.y, hp: 200, maxHp: 200});
-            } else {
-                projectiles.push({x: s.x, y: s.y-25, target, damage: 20, color: t.color});
-            }
-            s.tower.timer = 0;
-        }
-    }
-    ctx.restore();
-}
-
-// --- LOOP PRINCIPAL ---
 function update() {
     ctx.clearRect(0, 0, 800, 600);
     document.getElementById('money').innerText = money;
@@ -126,44 +85,58 @@ function update() {
     ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 40; ctx.beginPath();
     ctx.moveTo(path[0].x, path[0].y); path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
-    // Búfalos do Vaaruni
+    // Búfalos Vaaruni
     barriers.forEach((b, i) => {
         ctx.fillStyle = "#d2b48c"; ctx.fillRect(b.x-15, b.y-10, 30, 20);
-        ctx.fillStyle = "red"; ctx.fillRect(b.x-15, b.y-18, 30, 3);
-        ctx.fillStyle = "green"; ctx.fillRect(b.x-15, b.y-18, 30*(b.hp/b.maxHp), 3);
-        
-        let anyoneBlocked = false;
+        let active = false;
         enemies.forEach(en => {
-            if(Math.hypot(en.x - b.x, en.y - b.y) < 25) {
-                en.blocked = true; b.hp -= 0.5; anyoneBlocked = true;
-            }
+            if(Math.hypot(en.x - b.x, en.y - b.y) < 25) { en.blocked = true; b.hp -= 0.5; active = true; }
         });
-        if(!anyoneBlocked) enemies.forEach(en => en.blocked = false);
-        if(b.hp <= 0) { barriers.splice(i, 1); enemies.forEach(en => en.blocked = false); }
+        if(b.hp <= 0 || !active) { 
+            if(b.hp <= 0) { barriers.splice(i, 1); enemies.forEach(e => e.blocked = false); }
+        }
     });
 
-    // Torres
+    // Spots
     spots.forEach(s => {
         ctx.fillStyle = "#3e2723"; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
-        if(s.tower) drawTower(s);
+        if(s.tower) {
+            let t = s.tower;
+            ctx.fillStyle = t.color; ctx.beginPath(); ctx.arc(s.x, s.y-20, 12, 0, Math.PI*2); ctx.fill();
+            
+            let rate = (isNight && (t.name === 'Molovee' || t.name === 'Thietu')) ? 2 : (isNight ? 0.5 : 1);
+            s.tower.timer += rate;
+            
+            if(s.tower.timer >= t.fireRate) {
+                let target = enemies.find(en => Math.hypot(en.x - s.x, en.y - s.y) < t.range);
+                if(target) {
+                    if(t.name === 'Vaaruni') barriers.push({x: target.x, y: target.y, hp: 200, maxHp: 200});
+                    else projectiles.push({x: s.x, y: s.y-20, target, color: t.color});
+                    s.tower.timer = 0;
+                }
+            }
+            if(s.sellOpen) {
+                ctx.fillStyle = "black"; ctx.beginPath(); ctx.arc(s.x+40, s.y-40, 15, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "white"; ctx.fillText("X", s.x+36, s.y-36);
+            }
+        }
         if(s.menuOpen) drawMenu(s);
     });
 
-    // Inimigos
-    enemies.forEach((e, i) => {
-        e.update();
-        ctx.fillStyle = e.type === 'cavaleiro' ? "#7f8c8d" : "#8b4513";
-        ctx.fillRect(e.x-5, e.y-20, 10, 20);
+    // Inimigos e Tiros
+    enemies.forEach((e, i) => { 
+        e.update(); 
+        ctx.fillStyle = e.type === 'camponês' ? "#8b4513" : "#7f8c8d";
+        ctx.fillRect(e.x-5, e.y-15, 10, 15);
         if(e.health <= 0) { if(e.health !== -1) money += 30; enemies.splice(i, 1); }
     });
 
-    // Projéteis
     projectiles.forEach((p, i) => {
         let dx = p.target.x - p.x; let dy = p.target.y - p.y;
         let dist = Math.hypot(dx, dy);
-        p.x += (dx/dist)*12; p.y += (dy/dist)*12;
+        p.x += (dx/dist)*15; p.y += (dy/dist)*15;
         ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
-        if(dist < 10) { p.target.health -= 20; projectiles.splice(i, 1); }
+        if(dist < 15) { p.target.health -= 25; projectiles.splice(i, 1); }
     });
 
     requestAnimationFrame(update);
@@ -174,24 +147,23 @@ function drawMenu(s) {
     keys.forEach((k, i) => {
         let x = s.x + (i < 3 ? (i-1)*55 : (i-4)*55);
         let y = s.y + (i < 3 ? -65 : 65);
-        ctx.fillStyle = towerSpecs[k].color;
-        ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = towerSpecs[k].color; ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2); ctx.fill();
         if(s.selectedType === k) {
-            ctx.fillStyle = "black"; ctx.fillRect(x-20, y-40, 40, 15);
-            ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.fillText("$"+towerSpecs[k].price, x-12, y-28);
+            ctx.fillStyle = "black"; ctx.fillRect(x-20, y-45, 40, 15);
+            ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.fillText("$"+towerSpecs[k].price, x-12, y-33);
         }
     });
 }
 
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left; my = e.clientY - rect.top;
 
     spots.forEach(s => {
-        if(Math.hypot(s.x - mx, s.y - my) < 30) {
-            s.menuOpen = !s.menuOpen;
-            s.selectedType = null;
+        let d = Math.hypot(s.x - mx, s.y - my);
+        if(d < 30) {
+            if(!s.tower) { s.menuOpen = !s.menuOpen; s.selectedType = null; }
+            else { s.sellOpen = !s.sellOpen; }
         } else if(s.menuOpen) {
             const keys = Object.keys(towerSpecs);
             keys.forEach((k, i) => {
@@ -201,26 +173,25 @@ canvas.addEventListener('mousedown', (e) => {
                     if(s.selectedType === k) {
                         if(money >= towerSpecs[k].price) {
                             money -= towerSpecs[k].price;
-                            s.tower = { ...towerSpecs[k], timer: 0 };
+                            s.tower = {...towerSpecs[k], timer: 0};
                             s.menuOpen = false;
                         }
-                    } else { s.selectedType = k; }
+                    } else s.selectedType = k;
                 }
             });
+        } else if(s.sellOpen && Math.hypot(s.x+40-mx, s.y-40-my) < 20) {
+            money += s.tower.price * 0.7; s.tower = null; s.sellOpen = false;
         }
     });
 });
 
 function startNextWave() {
     if(enemies.length > 0) return;
-    currentWave++;
-    isNight = currentWave % 2 === 0;
-    document.getElementById('timeBox').className = "time-indicator " + (isNight ? "noite" : "dia");
-    document.getElementById('timeBox').innerText = isNight ? "🌙 NOITE" : "☀️ DIA";
-    canvas.className = isNight ? "night-filter" : "";
-    for(let i=0; i<5; i++) setTimeout(() => enemies.push(new Enemy('camponês')), i*1000);
+    currentWave++; isNight = currentWave % 2 === 0;
+    const t = document.getElementById('timeBox');
+    t.innerText = isNight ? "🌙 NOITE" : "☀️ DIA"; t.className = "time-indicator " + (isNight ? "noite" : "dia");
+    for(let i=0; i<6; i++) setTimeout(() => enemies.push(new Enemy('camponês')), i*800);
 }
-
 update();
 </script>
 </body>
