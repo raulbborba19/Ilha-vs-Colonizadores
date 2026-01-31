@@ -7,7 +7,8 @@
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; }
         .hud { background: #333; padding: 15px; width: 800px; display: flex; justify-content: space-around; border-bottom: 4px solid #555; }
         canvas { background: #27ae60; cursor: pointer; border: 4px solid #34495e; margin-top: 10px; }
-        .instrucoes { color: #aaa; font-size: 14px; margin: 5px; }
+        .btn-wave { cursor:pointer; background:#e67e22; border:none; color:white; padding:8px 15px; font-weight:bold; border-radius: 4px; }
+        .btn-wave:hover { background: #d35400; }
     </style>
 </head>
 <body>
@@ -16,9 +17,8 @@
         <div>💰 Moedas: <span id="money">600</span></div>
         <div>❤️ Templo: <span id="lives">10</span></div>
         <div>🌊 Onda: <span id="waveText">0</span></div>
-        <button onclick="startNextWave()" style="cursor:pointer; background:#e67e22; border:none; color:white; padding:5px 15px; font-weight:bold;">PRÓXIMA ONDA</button>
+        <button class="btn-wave" onclick="startNextWave()">PRÓXIMA ONDA (Pular Espera)</button>
     </div>
-    <div class="instrucoes">Clique no tronco -> Clique na cor -> Veja o preço -> Clique de novo para comprar!</div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
 
 <script>
@@ -30,94 +30,119 @@ let lives = 10;
 let currentWave = 0;
 let enemies = [];
 let projectiles = [];
-let waveActive = false;
 
-const path = [{x: -50, y: 300}, {x: 150, y: 300}, {x: 150, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 750, y: 500}];
+// Caminho ajustado para ser 100% visível
+const path = [{x: 0, y: 300}, {x: 150, y: 300}, {x: 150, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 750, y: 500}];
 
 const spots = [
-    {x: 100, y: 220, tower: null, menuOpen: false, selectedTowerType: null},
-    {x: 220, y: 100, tower: null, menuOpen: false, selectedTowerType: null},
-    {x: 380, y: 180, tower: null, menuOpen: false, selectedTowerType: null},
-    {x: 520, y: 400, tower: null, menuOpen: false, selectedTowerType: null}
+    {x: 80, y: 230, tower: null, menuOpen: false, selectedType: null},
+    {x: 220, y: 150, tower: null, menuOpen: false, selectedType: null},
+    {x: 400, y: 200, tower: null, menuOpen: false, selectedType: null},
+    {x: 520, y: 400, tower: null, menuOpen: false, selectedType: null},
+    {x: 350, y: 430, tower: null, menuOpen: false, selectedType: null}
 ];
 
 const towerSpecs = {
-    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 130, damage: 15, fireRate: 40 },
-    amarela: { name: 'Molovee', color: '#f1c40f', price: 250, range: 110, damage: 8, fireRate: 50 },
-    vermelha: { name: 'Brutáne', color: '#e74c3c', price: 400, range: 220, damage: 50, fireRate: 90 }
+    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 140, damage: 15, fireRate: 40 },
+    amarela: { name: 'Molovee', color: '#f1c40f', price: 250, range: 110, damage: 10, fireRate: 50 },
+    vermelha: { name: 'Brutáne', color: '#e74c3c', price: 400, range: 220, damage: 60, fireRate: 100 }
 };
 
-// --- DESENHO DE HUMANOIDES ---
-
-function drawHumanoid(x, y, color, type, scale = 1) {
+// --- FUNÇÃO DE DESENHO HUMANOIDE ---
+function drawPerson(x, y, color, type, scale = 1, isBoss = false) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
     
     // Cabeça
-    ctx.fillStyle = "#ffdbac"; // Pele
+    ctx.fillStyle = (type === 'clerigo') ? "#e0e0e0" : "#ffdbac";
     ctx.beginPath(); ctx.arc(0, -25, 7, 0, Math.PI*2); ctx.fill();
     
-    // Corpo/Roupa
+    // Roupa/Corpo
     ctx.fillStyle = color;
-    if(type === 'Brutáne') { // Lanceiro com flores
-        ctx.fillRect(-6, -18, 12, 18);
-        ctx.fillStyle = "pink"; ctx.beginPath(); ctx.arc(-5, -15, 3, 0, Math.PI*2); ctx.fill();
-    } else {
-        ctx.fillRect(-5, -18, 10, 15);
-    }
+    ctx.fillRect(-6, -18, 12, 18);
     
-    // Pernas e Braços
-    ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-3, -3); ctx.lineTo(-5, 5); ctx.moveTo(3, -3); ctx.lineTo(5, 5); ctx.stroke();
+    // Detalhe Brutáne (Lanceiro camuflado)
+    if(type === 'Brutáne') {
+        ctx.fillStyle = "pink"; 
+        ctx.beginPath(); ctx.arc(-5, -15, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(5, -10, 3, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Braços/Pernas
+    ctx.strokeStyle = "#222"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(-5, 8); ctx.moveTo(3, 0); ctx.lineTo(5, 8); ctx.stroke();
     
     ctx.restore();
 }
 
-// --- CLASSES ---
-
+// --- CLASSE INIMIGO ---
 class Enemy {
     constructor(type) {
         this.type = type;
         this.x = path[0].x; this.y = path[0].y;
-        this.targetIndex = 0;
-        this.health = 50; this.maxHealth = 50; this.speed = 1.5;
-        this.isMarked = false;
+        this.targetIdx = 1;
+        this.health = 60; this.maxHealth = 60; this.speed = 1.4;
+        this.isMarked = false; // Efeito "Mira"
+        this.pauseTimer = 0;
 
-        if(type === 'cavaleiro') { this.health = 150; this.speed = 0.8; this.isMarked = true; }
-        if(type === 'nobre') { this.health = 80; this.speed = 1.1; }
+        if(type === 'cavaleiro') { this.health = 200; this.maxHealth = 200; this.speed = 0.9; this.isMarked = true; }
+        if(type === 'nobre') { this.health = 100; this.maxHealth = 100; this.speed = 1.2; }
+        if(type === 'clerigo') { this.health = 150; this.maxHealth = 150; this.speed = 0.7; }
+        if(type === 'corte') { this.health = 2000; this.maxHealth = 2000; this.speed = 0.4; }
     }
 
     update() {
-        let target = path[this.targetIndex];
+        // Lógica de Pausa do Clérigo e Corte
+        if(this.type === 'clerigo' || this.type === 'corte') {
+            this.pauseTimer++;
+            if(this.pauseTimer > 180 && this.pauseTimer < 280) return; // Fica parado 100 frames
+            if(this.pauseTimer >= 280) this.pauseTimer = 0;
+        }
+
+        let target = path[this.targetIdx];
         let dx = target.x - this.x; let dy = target.y - this.y;
         let dist = Math.hypot(dx, dy);
-        if (dist < 5) {
-            this.targetIndex++;
-            if (this.targetIndex >= path.length) { lives--; this.health = 0; return; }
+
+        if(dist < 5) {
+            this.targetIdx++;
+            if(this.targetIdx >= path.length) { lives--; this.health = -999; return; }
         }
         this.x += (dx/dist) * this.speed; this.y += (dy/dist) * this.speed;
     }
 
     draw() {
-        let color = this.type === 'cavaleiro' ? '#7f8c8d' : (this.type === 'nobre' ? '#9b59b6' : '#8B4513');
-        drawHumanoid(this.x, this.y, color, this.type);
+        if(this.health <= 0 && this.health !== -999) return;
+        let color = "#8B4513";
+        if(this.type === 'cavaleiro') color = "#7f8c8d";
+        if(this.type === 'nobre') color = "#9b59b6";
+        if(this.type === 'clerigo') color = "#2ecc71";
+        
+        if(this.type === 'corte') {
+            // Desenha o Trono/Carruagem Boss
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(this.x-30, this.y-20, 60, 40);
+            drawPerson(this.x, this.y, "#f1c40f", "Rei", 1.5);
+        } else {
+            drawPerson(this.x, this.y, color, this.type);
+        }
+
         // Barra de Vida
-        ctx.fillStyle = 'red'; ctx.fillRect(this.x-10, this.y-40, 20, 3);
-        ctx.fillStyle = 'green'; ctx.fillRect(this.x-10, this.y-40, 20 * (this.health/this.maxHealth), 3);
+        ctx.fillStyle = 'red'; ctx.fillRect(this.x-15, this.y-45, 30, 4);
+        ctx.fillStyle = 'green'; ctx.fillRect(this.x-15, this.y-45, 30 * (this.health/this.maxHealth), 4);
     }
 }
 
+// --- CLASSE PROJÉTIL ---
 class Projectile {
     constructor(x, y, target, damage, color) {
         this.x = x; this.y = y; this.target = target;
         this.damage = damage; this.color = color;
-        this.speed = 7; this.active = true;
+        this.speed = 8; this.active = true;
     }
     update() {
         let dx = this.target.x - this.x; let dy = this.target.y - this.y;
         let dist = Math.hypot(dx, dy);
-        if (dist < 10) { this.target.health -= this.damage; this.active = false; return; }
+        if(dist < 10) { this.target.health -= this.damage; this.active = false; return; }
         this.x += (dx/dist) * this.speed; this.y += (dy/dist) * this.speed;
     }
     draw() {
@@ -125,84 +150,78 @@ class Projectile {
     }
 }
 
-// --- CONTROLES E CLIQUE ---
-
+// --- LÓGICA DE COMPRA E CLIQUE ---
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
     spots.forEach(s => {
-        // 1. Clicar no Tronco para abrir menu
-        if (Math.hypot(s.x - mx, s.y - my) < 30 && !s.tower) {
+        let d = Math.hypot(s.x - mx, s.y - my);
+        if(d < 30 && !s.tower) {
             s.menuOpen = !s.menuOpen;
-            s.selectedTowerType = null;
-            return;
-        }
-
-        // 2. Lógica dentro do Menu
-        if (s.menuOpen) {
-            const options = [
-                {x: s.x - 50, y: s.y - 60, type: 'azul'},
-                {x: s.x, y: s.y - 60, type: 'amarela'},
-                {x: s.x + 50, y: s.y - 60, type: 'vermelha'}
-            ];
-
-            options.forEach(opt => {
-                if (Math.hypot(opt.x - mx, opt.y - my) < 20) {
-                    // Se clicou na mesma cor de novo: COMPRA
-                    if (s.selectedTowerType === opt.type) {
-                        const cost = towerSpecs[opt.type].price;
-                        if (money >= cost) {
-                            money -= cost;
-                            s.tower = { ...towerSpecs[opt.type], timer: 0 };
+            s.selectedType = null;
+        } else if(s.menuOpen) {
+            const btns = [{x: s.x-50, t: 'azul'}, {x: s.x, t: 'amarela'}, {x: s.x+50, t: 'vermelha'}];
+            btns.forEach(b => {
+                if(Math.hypot(b.x - mx, (s.y-60) - my) < 20) {
+                    if(s.selectedType === b.t) {
+                        let spec = towerSpecs[b.t];
+                        if(money >= spec.price) {
+                            money -= spec.price;
+                            s.tower = {...spec, timer: 0};
                             s.menuOpen = false;
-                            document.getElementById('money').innerText = money;
+                            updateHUD();
                         }
-                    } else {
-                        // Primeiro clique: SELECIONA E MOSTRA PREÇO
-                        s.selectedTowerType = opt.type;
-                    }
+                    } else { s.selectedType = b.t; }
                 }
             });
         }
     });
 });
 
-function startNextWave() {
-    if (enemies.length > 0) return;
-    currentWave++;
+function updateHUD() {
+    document.getElementById('money').innerText = money;
+    document.getElementById('lives').innerText = lives;
     document.getElementById('waveText').innerText = currentWave;
-    let count = 0;
-    let timer = setInterval(() => {
-        let type = 'camponês';
-        if (count > 2) type = 'cavaleiro';
-        if (count > 5) type = 'nobre';
-        enemies.push(new Enemy(type));
-        count++;
-        if (count > 5 + currentWave) clearInterval(timer);
+}
+
+function startNextWave() {
+    if(enemies.length > 0) return;
+    currentWave++;
+    updateHUD();
+    
+    let wavePlan = [];
+    if(currentWave === 1) wavePlan = ['camponês', 'camponês', 'camponês'];
+    else if(currentWave === 2) wavePlan = ['camponês', 'cavaleiro', 'nobre', 'cavaleiro'];
+    else if(currentWave === 3) wavePlan = ['clerigo', 'cavaleiro', 'nobre', 'clerigo'];
+    else wavePlan = ['cavaleiro', 'corte', 'cavaleiro']; // Boss na 4+
+
+    let i = 0;
+    let spawn = setInterval(() => {
+        enemies.push(new Enemy(wavePlan[i]));
+        i++;
+        if(i >= wavePlan.length) clearInterval(spawn);
     }, 1200);
 }
 
-// --- LOOP DE RENDERIZAÇÃO ---
-
+// --- LOOP PRINCIPAL ---
 function loop() {
     ctx.clearRect(0, 0, 800, 600);
 
-    // Estrada
-    ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 40; ctx.beginPath();
+    // Caminho
+    ctx.strokeStyle = '#d35400'; ctx.lineWidth = 40; ctx.beginPath();
     ctx.moveTo(path[0].x, path[0].y); path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
-
+    
     // Templo
-    ctx.fillStyle = '#7f8c8d'; ctx.fillRect(720, 460, 80, 80);
+    ctx.fillStyle = '#95a5a6'; ctx.fillRect(730, 460, 70, 80);
 
     // Troncos e Torres
     spots.forEach(s => {
         ctx.fillStyle = '#5d4037'; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
         
-        if (s.tower) {
-            drawHumanoid(s.x, s.y, s.tower.color, s.tower.name, 1.2);
-            // Tiro
+        if(s.tower) {
+            drawPerson(s.x, s.y, s.tower.color, s.tower.name, 1.2);
             s.tower.timer++;
             if(s.tower.timer > s.tower.fireRate) {
                 let targets = enemies.filter(en => Math.hypot(en.x - s.x, en.y - s.y) < s.tower.range);
@@ -215,34 +234,35 @@ function loop() {
             }
         }
 
-        if (s.menuOpen) {
-            const types = ['azul', 'amarela', 'vermelha'];
-            types.forEach((type, i) => {
-                let ox = s.x + (i-1)*50; let oy = s.y - 60;
+        if(s.menuOpen) {
+            ['azul', 'amarela', 'vermelha'].forEach((type, i) => {
+                let bx = s.x + (i-1)*50; let by = s.y - 60;
                 ctx.fillStyle = towerSpecs[type].color;
-                ctx.beginPath(); ctx.arc(ox, oy, 18, 0, Math.PI*2); ctx.fill();
-                ctx.strokeStyle = s.selectedTowerType === type ? 'white' : 'black';
-                ctx.lineWidth = 3; ctx.stroke();
-
-                if (s.selectedTowerType === type) {
-                    ctx.fillStyle = "white"; ctx.font = "bold 14px Arial";
-                    ctx.fillText("$" + towerSpecs[type].price, ox - 12, oy - 25);
+                ctx.beginPath(); ctx.arc(bx, by, 18, 0, Math.PI*2); ctx.fill();
+                if(s.selectedType === type) {
+                    ctx.fillStyle = "white"; ctx.font = "12px Arial";
+                    ctx.fillText("$"+towerSpecs[type].price, bx-10, by-25);
+                    ctx.strokeStyle = "white"; ctx.stroke();
                 }
             });
         }
     });
 
+    // Inimigos e Projéteis
     enemies.forEach((en, i) => {
         en.update(); en.draw();
-        if (en.health <= 0) { enemies.splice(i, 1); money += 25; document.getElementById('money').innerText = money; }
+        if(en.health <= 0) { 
+            if(en.health !== -999) money += 30;
+            enemies.splice(i, 1); updateHUD(); 
+        }
     });
 
     projectiles.forEach((p, i) => {
         p.update(); p.draw();
-        if (!p.active) projectiles.splice(i, 1);
+        if(!p.active) projectiles.splice(i, 1);
     });
 
-    if(lives <= 0) { alert("Fim de Jogo! O Templo foi dominado."); location.reload(); }
+    if(lives <= 0) { alert("Game Over!"); location.reload(); }
     requestAnimationFrame(loop);
 }
 
