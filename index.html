@@ -2,132 +2,269 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Forest Tower Defense</title>
+    <title>Forest Defense: O Templo</title>
     <style>
-        body { display: flex; flex-direction: column; align-items: center; background: #2c3e50; color: white; font-family: sans-serif; }
-        canvas { background: #27ae60; border: 5px solid #34495e; cursor: crosshair; }
-        .ui { margin-top: 10px; font-size: 20px; }
+        body { background: #1a1a1a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
+        canvas { background: #2d5a27; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: pointer; margin-top: 10px; border-radius: 8px; }
+        .hud { background: #333; padding: 15px; width: 800px; display: flex; justify-content: space-around; border-bottom: 4px solid #555; }
+        .stats { font-weight: bold; font-size: 1.2rem; }
+        .btn-wave { background: #e67e22; border: none; padding: 8px 15px; color: white; cursor: pointer; border-radius: 5px; font-weight: bold; }
+        .btn-wave:hover { background: #d35400; }
     </style>
 </head>
 <body>
-    <div class="ui">Moedas: <span id="money">500</span> | Onda: <span id="wave">1</span></div>
+
+    <div class="hud">
+        <div class="stats">💰 Moedas: <span id="money">600</span></div>
+        <div class="stats">❤️ Templo: <span id="lives">10</span></div>
+        <div class="stats">🌊 Onda: <span id="waveText">0</span></div>
+        <button class="btn-wave" onclick="startNextWave()">PRÓXIMA ONDA</button>
+    </div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
 
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const moneyEl = document.getElementById('money');
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-        let money = 500;
-        let selectedTronco = null;
+// --- CONFIGURAÇÕES DO JOGO ---
+let money = 600;
+let lives = 10;
+let currentWave = 0;
+let enemies = [];
+let towers = [];
+let projectiles = [];
+let waveActive = false;
 
-        // Configuração do Caminho (Pista de Terra)
-        const path = [{x: 0, y: 300}, {x: 200, y: 300}, {x: 200, y: 100}, {x: 500, y: 100}, {x: 500, y: 500}, {x: 800, y: 500}];
+// Caminho (Path)
+const path = [
+    {x: -50, y: 300}, {x: 150, y: 300}, {x: 150, y: 100}, 
+    {x: 450, y: 100}, {x: 450, y: 500}, {x: 750, y: 500}
+];
 
-        // Localização dos Troncos (Onde pode construir)
-        const troncos = [
-            {x: 100, y: 200, tower: null, menuOpen: false},
-            {x: 350, y: 200, tower: null, menuOpen: false},
-            {x: 600, y: 400, tower: null, menuOpen: false}
-        ];
+// Troncos para construção
+const spots = [
+    {x: 100, y: 220, tower: null, menuOpen: false},
+    {x: 220, y: 100, tower: null, menuOpen: false},
+    {x: 380, y: 180, tower: null, menuOpen: false},
+    {x: 520, y: 400, tower: null, menuOpen: false},
+    {x: 350, y: 450, tower: null, menuOpen: false}
+];
 
-        const towerData = {
-            azul: { color: 'blue', price: 150, name: 'Yorph' },
-            amarela: { color: 'yellow', price: 250, name: 'Molovee' },
-            vermelha: { color: 'red', price: 400, name: 'Brutáne' }
-        };
+const towerSpecs = {
+    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 120, damage: 10, fireRate: 30 },
+    amarela: { name: 'Molovee', color: '#f1c40f', price: 250, range: 100, damage: 5, fireRate: 60, poison: true },
+    vermelha: { name: 'Brutáne', color: '#e74c3c', price: 400, range: 200, damage: 40, fireRate: 80 }
+};
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+// --- CLASSES ---
 
-            // 1. Desenha a Pista de Terra
-            ctx.strokeStyle = "#d35400";
-            ctx.lineWidth = 40;
-            ctx.beginPath();
-            ctx.moveTo(path[0].x, path[0].y);
-            path.forEach(p => ctx.lineTo(p.x, p.y));
-            ctx.stroke();
+class Enemy {
+    constructor(type, x, y) {
+        this.x = x; this.y = y;
+        this.targetPathIndex = 0;
+        this.health = 50;
+        this.maxHealth = 50;
+        this.speed = 1.5;
+        this.type = type;
+        this.isMarked = false; // Efeito Mira
+        this.isBoss = false;
 
-            // 2. Desenha o Templo (Final)
-            ctx.fillStyle = "#95a5a6";
-            ctx.fillRect(720, 450, 80, 100);
+        if(type === 'cavaleiro') { this.health = 150; this.speed = 1.0; this.isMarked = true; }
+        if(type === 'nobre') { this.health = 80; this.speed = 1.2; }
+    }
 
-            // 3. Desenha os Troncos e Menus
-            troncos.forEach(t => {
-                // Desenha o tronco (marrom)
-                ctx.fillStyle = "#5d4037";
-                ctx.beginPath();
-                ctx.arc(t.x, t.y, 25, 0, Math.PI * 2);
-                ctx.fill();
+    update() {
+        let target = path[this.targetPathIndex];
+        let dx = target.x - this.x;
+        let dy = target.y - this.y;
+        let dist = Math.hypot(dx, dy);
 
-                if (t.tower) {
-                    // Desenha a torre se existir
-                    ctx.fillStyle = t.tower.color;
-                    ctx.fillRect(t.x - 15, t.y - 40, 30, 40);
-                } else if (t.menuOpen) {
-                    // Desenha as 3 bolinhas de escolha
-                    drawMenu(t);
-                }
-            });
-
-            requestAnimationFrame(draw);
+        if (dist < 2) {
+            this.targetPathIndex++;
+            if (this.targetPathIndex >= path.length) {
+                this.health = 0;
+                lives--;
+                updateUI();
+                return;
+            }
         }
 
-        function drawMenu(t) {
-            const offsets = [{x: -40, c: 'blue'}, {x: 0, c: 'yellow'}, {x: 40, c: 'red'}];
-            offsets.forEach(off => {
-                ctx.fillStyle = off.c;
-                ctx.beginPath();
-                ctx.arc(t.x + off.x, t.y - 50, 15, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = "white";
-                ctx.stroke();
-            });
+        this.x += (dx / dist) * this.speed;
+        this.y += (dy / dist) * this.speed;
+    }
+
+    draw() {
+        ctx.fillStyle = this.type === 'cavaleiro' ? '#7f8c8d' : 
+                       this.type === 'nobre' ? '#9b59b6' : '#d35400';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 12, 0, Math.PI*2);
+        ctx.fill();
+        // Barra de vida
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x - 10, this.y - 20, 20, 4);
+        ctx.fillStyle = 'green';
+        ctx.fillRect(this.x - 10, this.y - 20, 20 * (this.health / this.maxHealth), 4);
+    }
+}
+
+class Projectile {
+    constructor(x, y, target, damage, color) {
+        this.x = x; this.y = y;
+        this.target = target;
+        this.damage = damage;
+        this.color = color;
+        this.speed = 5;
+        this.active = true;
+    }
+    update() {
+        let dx = this.target.x - this.x;
+        let dy = this.target.y - this.y;
+        let dist = Math.hypot(dx, dy);
+        if (dist < 5) {
+            this.target.health -= this.damage;
+            this.active = false;
         }
+        this.x += (dx / dist) * this.speed;
+        this.y += (dy / dist) * this.speed;
+    }
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill();
+    }
+}
 
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+// --- LÓGICA PRINCIPAL ---
 
-            troncos.forEach(t => {
-                const dist = Math.hypot(t.x - mouseX, t.y - mouseY);
-                
-                // Se clicar no tronco
-                if (dist < 25 && !t.tower) {
-                    t.menuOpen = !t.menuOpen;
-                } 
-                // Se o menu estiver aberto, checar clique nas bolinhas
-                else if (t.menuOpen) {
-                    checkMenuClick(t, mouseX, mouseY);
-                }
-            });
-        });
+function updateUI() {
+    document.getElementById('money').innerText = money;
+    document.getElementById('lives').innerText = lives;
+    document.getElementById('waveText').innerText = currentWave;
+}
 
-        function checkMenuClick(t, mx, my) {
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    spots.forEach(s => {
+        // Clicar no tronco
+        if (Math.hypot(s.x - mx, s.y - my) < 30 && !s.tower) {
+            s.menuOpen = !s.menuOpen;
+        } 
+        // Clicar nas opções do menu
+        else if (s.menuOpen) {
             const options = [
-                {x: t.x - 40, y: t.y - 50, type: 'azul'},
-                {x: t.x, y: t.y - 50, type: 'amarela'},
-                {x: t.x + 40, y: t.y - 50, type: 'vermelha'}
+                {x: s.x - 45, y: s.y - 50, type: 'azul'},
+                {x: s.x, y: s.y - 50, type: 'amarela'},
+                {x: s.x + 45, y: s.y - 50, type: 'vermelha'}
             ];
-
             options.forEach(opt => {
-                const d = Math.hypot(opt.x - mx, opt.y - my);
-                if (d < 15) {
-                    const data = towerData[opt.type];
+                if (Math.hypot(opt.x - mx, opt.y - my) < 18) {
+                    const data = towerSpecs[opt.type];
                     if (money >= data.price) {
                         money -= data.price;
-                        t.tower = data;
-                        t.menuOpen = false;
-                        moneyEl.innerText = money;
-                    } else {
-                        alert("Moedas insuficientes!");
+                        s.tower = { ...data, x: s.x, y: s.y, timer: 0 };
+                        s.menuOpen = false;
+                        updateUI();
                     }
                 }
             });
         }
+    });
+});
 
-        draw();
-    </script>
+function spawnWave() {
+    currentWave++;
+    updateUI();
+    let count = 0;
+    let interval = setInterval(() => {
+        let type = 'camponês';
+        if (count > 3) type = 'cavaleiro';
+        if (count > 6) type = 'nobre';
+        
+        enemies.push(new Enemy(type, path[0].x, path[0].y));
+        count++;
+        if (count > 5 + currentWave * 2) clearInterval(interval);
+    }, 1000);
+}
+
+function startNextWave() {
+    if (enemies.length === 0) {
+        spawnWave();
+        money += 50; // Bônus de rodada
+        updateUI();
+    }
+}
+
+function loop() {
+    ctx.clearRect(0, 0, 800, 600);
+
+    // Desenhar Caminho
+    ctx.strokeStyle = '#8d6e63'; ctx.lineWidth = 40; ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
+
+    // Desenhar Templo
+    ctx.fillStyle = '#7f8c8d'; ctx.fillRect(730, 450, 70, 100);
+
+    // Torres e Ataque
+    spots.forEach(s => {
+        // Desenha tronco
+        ctx.fillStyle = '#4e342e'; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
+        
+        if (s.tower) {
+            ctx.fillStyle = s.tower.color;
+            ctx.fillRect(s.x-15, s.y-40, 30, 40);
+            
+            // Lógica de Alvo (Prioriza "Mira" / Cavaleiros)
+            s.tower.timer++;
+            if (s.tower.timer >= s.tower.fireRate) {
+                let targets = enemies.filter(en => Math.hypot(en.x - s.x, en.y - s.y) < s.tower.range);
+                let markedTargets = targets.filter(en => en.isMarked);
+                let finalTarget = markedTargets.length > 0 ? markedTargets[0] : targets[0];
+
+                if (finalTarget) {
+                    projectiles.push(new Projectile(s.x, s.y - 40, finalTarget, s.tower.damage, s.tower.color));
+                    s.tower.timer = 0;
+                }
+            }
+        } else if (s.menuOpen) {
+            const options = ['#3498db', '#f1c40f', '#e74c3c'];
+            options.forEach((c, i) => {
+                ctx.fillStyle = c; ctx.beginPath();
+                ctx.arc(s.x + (i-1)*45, s.y - 50, 15, 0, Math.PI*2); ctx.fill();
+            });
+        }
+    });
+
+    // Inimigos
+    enemies.forEach((en, index) => {
+        en.update();
+        en.draw();
+        if (en.health <= 0) {
+            enemies.splice(index, 1);
+            money += 20;
+            updateUI();
+        }
+    });
+
+    // Projéteis
+    projectiles.forEach((p, index) => {
+        p.update();
+        p.draw();
+        if (!p.active) projectiles.splice(index, 1);
+    });
+
+    if (lives <= 0) {
+        alert("O Templo caiu! Fim de jogo.");
+        location.reload();
+    }
+
+    requestAnimationFrame(loop);
+}
+
+updateUI();
+loop();
+</script>
 </body>
 </html>
