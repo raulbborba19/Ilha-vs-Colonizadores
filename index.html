@@ -2,326 +2,232 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Forest Defense: O Templo dos Elementos</title>
+    <title>Forest Defense: Ciclo das Tribos</title>
     <style>
-        :root {
-            --primary: #2d5a27;
-            --accent: #e67e22;
-            --dark: #1a1a1a;
-            --wood: #3e2723;
-        }
-
-        body { 
-            background-color: var(--dark); 
-            color: #f0e6d2; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            margin: 0;
-            overflow-x: hidden;
-        }
-
-        .hud { 
-            background: var(--wood); 
-            border-bottom: 5px solid #2b1d19;
-            width: 100%; 
-            max-width: 800px;
-            padding: 15px; 
-            display: flex; 
-            justify-content: space-around; 
-            align-items: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-            z-index: 10;
-        }
-
-        .stat { font-size: 1.2rem; font-weight: bold; text-shadow: 2px 2px #000; }
-        .gold { color: #ffd700; }
-        .lives { color: #ff4d4d; }
-
-        canvas { 
-            background-color: var(--primary); 
-            border: 8px solid var(--wood); 
-            border-radius: 4px; 
-            box-shadow: 0 0 30px rgba(0,0,0,0.5);
-            margin-top: 20px;
-            cursor: crosshair;
-        }
-
-        .btn-wave {
-            background: linear-gradient(#e67e22, #d35400);
-            border: none;
-            color: white;
-            padding: 10px 25px;
-            font-weight: bold;
-            border-radius: 5px;
-            cursor: pointer;
-            box-shadow: 0 4px #a04000;
-            transition: 0.2s;
-        }
-
-        .btn-wave:hover { filter: brightness(1.2); }
-        .btn-wave:active { transform: translateY(2px); box-shadow: 0 1px #a04000; }
-
-        .tooltip { color: #888; margin-top: 10px; font-size: 0.9rem; }
+        body { background: #1a1a1a; color: #f0e6d2; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; }
+        .hud { background: #3e2723; border-bottom: 5px solid #2b1d19; width: 800px; padding: 15px; display: flex; justify-content: space-around; align-items: center; }
+        .time-indicator { font-weight: bold; padding: 5px 15px; border-radius: 20px; text-transform: uppercase; }
+        .dia { background: #f1c40f; color: #000; }
+        .noite { background: #34495e; color: #fff; box-shadow: 0 0 10px #82ccdd; }
+        canvas { border: 8px solid #3e2723; margin-top: 10px; transition: filter 2s; }
+        .night-filter { filter: brightness(0.6) saturate(1.2) sepia(0.2) hue-rotate(200deg); }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <div class="stat gold">💰 <span id="money">600</span></div>
-        <div class="stat lives">❤️ <span id="lives">10</span></div>
-        <div class="stat">🌊 Onda: <span id="waveText">0</span></div>
-        <button class="btn-wave" onclick="startNextWave()">INICIAR ONDA</button>
+        <div id="timeBox" class="time-indicator dia">☀️ DIA</div>
+        <div>💰 <span id="money">800</span></div>
+        <div>❤️ <span id="lives">15</span></div>
+        <button onclick="startNextWave()" style="cursor:pointer; padding:10px; background:#e67e22; border:none; color:white; font-weight:bold;">PRÓXIMA ONDA</button>
     </div>
-
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    
-    <div class="tooltip">Dica: Clique em um tronco para ver as opções. Clique em uma torre para vender por 70%.</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- ESTADO DO JOGO ---
-let money = 600;
-let lives = 10;
-let currentWave = 0;
-let enemies = [];
-let projectiles = [];
+let money = 800; let lives = 15; let currentWave = 0;
+let enemies = []; let projectiles = []; let barriers = [];
+let isNight = false;
 
 const path = [{x: 0, y: 300}, {x: 150, y: 300}, {x: 150, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 750, y: 500}];
-
 const spots = [
-    {x: 80, y: 230, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 230, y: 160, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 400, y: 180, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 520, y: 420, tower: null, menuOpen: false, selectedType: null, sellOpen: false},
-    {x: 350, y: 420, tower: null, menuOpen: false, selectedType: null, sellOpen: false}
+    {x: 80, y: 230, tower: null, menuOpen: false}, {x: 230, y: 160, tower: null, menuOpen: false},
+    {x: 400, y: 180, tower: null, menuOpen: false}, {x: 520, y: 420, tower: null, menuOpen: false}
 ];
 
 const towerSpecs = {
-    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 150, damage: 15, fireRate: 40 },
-    amarela: { name: 'Molovee', color: '#f1c40f', price: 250, range: 120, damage: 8, fireRate: 30 },
-    vermelha: { name: 'Brutáne', color: '#e74c3c', price: 400, range: 230, damage: 60, fireRate: 90 }
+    // PURAS
+    azul: { name: 'Yorph', color: '#3498db', price: 150, range: 140, fireRate: 40, type: 'pure' },
+    amarela: { name: 'Molovee', color: '#f1c40f', price: 200, range: 120, fireRate: 50, type: 'pure' },
+    vermelha: { name: 'Brutáne', color: '#e74c3c', price: 300, range: 220, fireRate: 100, type: 'pure' },
+    // MISTURAS
+    laranja: { name: 'Quetina', color: '#e67e22', price: 250, range: 130, fireRate: 60, type: 'mix' },
+    verde: { name: 'Thietu', color: '#2ecc71', price: 350, range: 160, fireRate: 70, type: 'mix' },
+    roxa: { name: 'Vaaruni', color: '#9b59b6', price: 400, range: 100, fireRate: 120, type: 'mix' }
 };
 
-// --- MOTOR GRÁFICO (Procedural) ---
+// --- DESENHOS ---
 
-function drawYorph(x, y, attacking) {
-    ctx.save(); ctx.translate(x, y);
-    // Manto de Penas
-    ctx.fillStyle = "#2980b9";
-    ctx.beginPath(); ctx.moveTo(-12, -5); ctx.lineTo(0, -25); ctx.lineTo(12, -5); ctx.fill();
-    // Cabeça
-    ctx.fillStyle = "#ffdbac"; ctx.beginPath(); ctx.arc(0, -30, 8, 0, Math.PI*2); ctx.fill();
-    // Brilho de ataque
-    if(attacking) {
-        ctx.strokeStyle = "#82ccdd"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(0, -30, 12, 0, Math.PI*2); ctx.stroke();
-    }
-    ctx.restore();
-}
+function drawTower(s) {
+    ctx.save(); ctx.translate(s.x, s.y);
+    const t = s.tower;
+    const nightSlow = (t.name !== 'Molovee' && t.name !== 'Thietu' && isNight);
+    const nightFast = (isNight && (t.name === 'Molovee' || t.name === 'Thietu'));
 
-function drawMolovee(x, y, attacking) {
-    ctx.save(); ctx.translate(x, y);
-    // Roupa Hiena
-    ctx.fillStyle = "#d35400"; ctx.fillRect(-8, -20, 16, 18);
-    // Capuz Branco (Caveira)
-    ctx.fillStyle = "#ecf0f1"; ctx.beginPath(); ctx.arc(0, -28, 9, Math.PI, 0); ctx.fill();
-    if(attacking) { ctx.fillStyle = "#2ecc71"; ctx.fillRect(-3, -32, 6, 2); }
-    ctx.restore();
-}
-
-function drawBrutane(x, y, attacking) {
-    ctx.save(); ctx.translate(x, y);
-    // Armadura Vermelha
-    ctx.fillStyle = "#c0392b"; ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(0, -35); ctx.lineTo(10, 0); ctx.fill();
-    // Flor Rosa
-    ctx.fillStyle = "#ff9ff3"; ctx.beginPath(); ctx.arc(0, -20, 5, 0, Math.PI*2); ctx.fill();
-    // Lança
-    ctx.strokeStyle = "#bdc3c7"; ctx.lineWidth = 3;
-    let reach = attacking ? 15 : 0;
-    ctx.beginPath(); ctx.moveTo(5, -15); ctx.lineTo(15+reach, -40-reach); ctx.stroke();
-    ctx.restore();
-}
-
-function drawEnemy(en) {
-    ctx.save(); ctx.translate(en.x, en.y);
-    let color = "#8B4513"; // Camponês
-    if(en.type === 'cavaleiro') color = "#7f8c8d";
-    if(en.type === 'nobre') color = "#9b59b6";
-    if(en.type === 'clerigo') color = "#2ecc71";
-    if(en.type === 'corte') {
-        ctx.fillStyle = "#5d4037"; ctx.fillRect(-25, -15, 50, 30); color = "#f1c40f";
+    // Visual Base do Personagem
+    ctx.fillStyle = t.color;
+    if(t.name === 'Quetina') {
+        // Asas de Borboleta atrás
+        ctx.globalAlpha = 0.5; ctx.fillRect(-15, -35, 30, 15); ctx.globalAlpha = 1;
+        ctx.fillStyle = "#ffdbac"; ctx.beginPath(); ctx.arc(0, -25, 7, 0, Math.PI*2); ctx.fill();
+        // Ovo/Larva ao lado
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(15, 0, 5, 0, Math.PI*2); ctx.fill();
+    } else if(t.name === 'Thietu') {
+        ctx.fillStyle = isNight ? "#2c3e50" : "#2ecc71";
+        ctx.fillRect(-8, -25, 16, 25);
+    } else if(t.name === 'Vaaruni') {
+        ctx.fillStyle = "#9b59b6"; ctx.fillRect(-10, -20, 20, 20);
+        ctx.fillStyle = "#d2b48c"; ctx.fillRect(-12, -5, 24, 5); // Base de Areia
+    } else {
+        // Torres antigas (Yorph, Molovee, Brutáne)
+        ctx.beginPath(); ctx.arc(0, -20, 10, 0, Math.PI*2); ctx.fill();
     }
     
-    // Corpo
-    ctx.fillStyle = color; ctx.fillRect(-6, -15, 12, 15);
-    // Cabeça
-    ctx.fillStyle = "#ffdbac"; ctx.beginPath(); ctx.arc(0, -22, 6, 0, Math.PI*2); ctx.fill();
-    
-    // Barra de Vida
-    ctx.fillStyle = "red"; ctx.fillRect(-15, -35, 30, 4);
-    ctx.fillStyle = "green"; ctx.fillRect(-15, -35, 30 * (en.health/en.maxHealth), 4);
-    ctx.restore();
-}
-
-// --- LOGICA DOS INIMIGOS ---
-
-class Enemy {
-    constructor(type) {
-        this.type = type;
-        this.x = path[0].x; this.y = path[0].y;
-        this.targetIdx = 1;
-        this.health = 80; this.maxHealth = 80; this.speed = 1.3;
-        this.isMarked = (type === 'cavaleiro');
-        this.pauseTimer = 0;
-
-        if(type === 'cavaleiro') { this.health = 250; this.maxHealth = 250; this.speed = 0.8; }
-        if(type === 'nobre') { this.health = 120; this.maxHealth = 120; this.speed = 1.1; }
-        if(type === 'clerigo') { this.health = 180; this.maxHealth = 180; this.speed = 0.7; }
-        if(type === 'corte') { this.health = 2500; this.maxHealth = 2500; this.speed = 0.4; }
-    }
-
-    update() {
-        if((this.type === 'clerigo' || this.type === 'corte') && ++this.pauseTimer > 150) {
-            if(this.pauseTimer > 230) this.pauseTimer = 0;
-            return;
+    // Status do Atirador
+    s.timer += (nightFast ? 2 : (nightSlow ? 0.5 : 1));
+    if(s.timer >= t.fireRate) {
+        let target = enemies.find(e => Math.hypot(e.x - s.x, e.y - s.y) < t.range);
+        if(target) {
+            if(t.name === 'Vaaruni' && barriers.length < 2) {
+                barriers.push({x: target.x, y: target.y, hp: 100});
+            } else {
+                projectiles.push({x: s.x, y: s.y-20, target, color: t.color});
+            }
+            s.timer = 0;
         }
-        let target = path[this.targetIdx];
-        let dx = target.x - this.x; let dy = target.y - this.y;
+    }
+    ctx.restore();
+}
+
+function drawEnemy(e) {
+    ctx.save(); ctx.translate(e.x, e.y);
+    let speedMult = 1;
+    if(isNight) {
+        if(e.type === 'camponês') speedMult = 2;
+        else speedMult = 0.5;
+    }
+
+    // Corpo Humanoide
+    ctx.fillStyle = (e.type === 'clerigo') ? "#2ecc71" : (e.type === 'cavaleiro' ? "#7f8c8d" : "#8b4513");
+    ctx.fillRect(-5, -20, 10, 20);
+    ctx.fillStyle = "#ffdbac"; ctx.beginPath(); ctx.arc(0, -25, 6, 0, Math.PI*2); ctx.fill();
+
+    // Efeitos do Clérigo
+    if(e.type === 'clerigo' && e.actionTimer > 100) {
+        ctx.strokeStyle = e.actionType === 'benção' ? "#f1c40f" : "#e74c3c";
+        ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -20, 25, 0, Math.PI*2); ctx.stroke();
+        // Texto do Efeito
+        ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.fillText(e.actionType, -20, -45);
+    }
+
+    e.x += e.vx * speedMult; e.y += e.vy * speedMult;
+    ctx.restore();
+}
+
+// --- LOGICA DE ONDAS E TEMPO ---
+
+function startNextWave() {
+    if(enemies.length > 0) return;
+    currentWave++;
+    isNight = currentWave % 2 === 0;
+    
+    const tBox = document.getElementById('timeBox');
+    tBox.innerText = isNight ? "🌙 NOITE" : "☀️ DIA";
+    tBox.className = "time-indicator " + (isNight ? "noite" : "dia");
+    canvas.className = isNight ? "night-filter" : "";
+
+    // Spawn de Inimigos com lógica de Nobre + Escolta
+    let wave = ['camponês', 'cavaleiro', 'nobre', 'clerigo'];
+    wave.forEach((type, i) => {
+        setTimeout(() => {
+            enemies.push({
+                type, x: path[0].x, y: path[0].y, targetIdx: 1, 
+                health: 100, maxHealth: 100, vx: 0, vy: 0,
+                actionTimer: 0, actionType: ''
+            });
+        }, i * 1500);
+    });
+}
+
+function update() {
+    ctx.clearRect(0, 0, 800, 600);
+    
+    // Estrada
+    ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 40; ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y); path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
+
+    // Barreiras do Vaaruni (Búfalos de Areia)
+    barriers.forEach((b, i) => {
+        ctx.fillStyle = "#d2b48c"; ctx.fillRect(b.x-15, b.y-10, 30, 20);
+        ctx.fillStyle = "brown"; ctx.fillRect(b.x-15, b.y-15, 30, 4); // Vida da barreira
+        // Inimigos colidem com barreira
+        enemies.forEach(en => {
+            if(Math.hypot(en.x - b.x, en.y - b.y) < 20) {
+                en.vx = 0; en.vy = 0; b.hp -= 0.5;
+            }
+        });
+        if(b.hp <= 0) barriers.splice(i, 1);
+    });
+
+    // Troncos e Menu
+    spots.forEach(s => {
+        ctx.fillStyle = "#3e2723"; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
+        if(s.tower) drawTower(s);
+        if(s.menuOpen) drawMenu(s);
+    });
+
+    // Lógica de Movimento Inimigo
+    enemies.forEach((e, i) => {
+        let target = path[e.targetIdx];
+        let dx = target.x - e.x; let dy = target.y - e.y;
         let dist = Math.hypot(dx, dy);
-        if(dist < 5) {
-            this.targetIdx++;
-            if(this.targetIdx >= path.length) { lives--; this.health = -1; return; }
+        
+        e.vx = (dx/dist) * 1.2; e.vy = (dy/dist) * 1.2;
+        
+        // IA do Clérigo
+        if(e.type === 'clerigo') {
+            e.actionTimer++;
+            if(e.actionTimer > 150) {
+                e.actionType = Math.random() > 0.5 ? 'benção' : 'maldição';
+                e.actionTimer = 0;
+            }
         }
-        this.x += (dx/dist) * this.speed; this.y += (dy/dist) * this.speed;
-    }
+
+        drawEnemy(e);
+        if(dist < 5) {
+            e.targetIdx++;
+            if(e.targetIdx >= path.length) { enemies.splice(i, 1); lives--; }
+        }
+    });
+
+    requestAnimationFrame(update);
 }
 
-// --- LOOP E CONTROLES ---
+// Menu de compra expandido
+function drawMenu(s) {
+    const types = Object.keys(towerSpecs);
+    types.forEach((t, i) => {
+        let x = s.x + (i < 3 ? (i-1)*50 : (i-4)*50);
+        let y = s.y + (i < 3 ? -60 : 60);
+        ctx.fillStyle = towerSpecs[t].color;
+        ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2); ctx.fill();
+    });
+}
 
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-
     spots.forEach(s => {
-        let d = Math.hypot(s.x - mx, s.y - my);
-        if(d < 30) {
-            if(!s.tower) { s.menuOpen = !s.menuOpen; s.selectedType = null; }
-            else { s.sellOpen = !s.sellOpen; }
-            return;
-        }
-        if(s.menuOpen) {
-            ['azul', 'amarela', 'vermelha'].forEach((t, i) => {
-                let bx = s.x + (i-1)*55; let by = s.y - 65;
-                if(Math.hypot(bx - mx, by - my) < 22) {
-                    if(s.selectedType === t) {
-                        if(money >= towerSpecs[t].price) {
-                            money -= towerSpecs[t].price;
-                            s.tower = {...towerSpecs[t], timer: 0};
-                            s.menuOpen = false;
-                        }
-                    } else { s.selectedType = t; }
+        if(Math.hypot(s.x - mx, s.y - my) < 30) s.menuOpen = !s.menuOpen;
+        else if(s.menuOpen) {
+            // Lógica simplificada de clique no menu para teste
+            const types = Object.keys(towerSpecs);
+            types.forEach((t, i) => {
+                let x = s.x + (i < 3 ? (i-1)*50 : (i-4)*50);
+                let y = s.y + (i < 3 ? -60 : 60);
+                if(Math.hypot(x - mx, y - my) < 20) {
+                    s.tower = { ...towerSpecs[t], timer: 0 };
+                    s.menuOpen = false;
                 }
             });
-        } else if(s.sellOpen) {
-            if(Math.hypot(s.x+45 - mx, s.y-45 - my) < 20) {
-                money += Math.floor(s.tower.price * 0.7);
-                s.tower = null; s.sellOpen = false;
-            }
         }
     });
 });
 
-function startNextWave() {
-    if(enemies.length > 0) return;
-    currentWave++;
-    let plan = ['camponês', 'camponês', 'cavaleiro'];
-    if(currentWave === 2) plan = ['cavaleiro', 'nobre', 'cavaleiro', 'nobre'];
-    if(currentWave === 3) plan = ['clerigo', 'cavaleiro', 'nobre', 'clerigo'];
-    if(currentWave >= 4) plan = ['cavaleiro', 'corte', 'cavaleiro'];
-    
-    let i = 0;
-    let spawn = setInterval(() => {
-        enemies.push(new Enemy(plan[i++]));
-        if(i >= plan.length) clearInterval(spawn);
-    }, 1500);
-}
-
-function loop() {
-    ctx.clearRect(0, 0, 800, 600);
-    document.getElementById('money').innerText = money;
-    document.getElementById('lives').innerText = lives;
-    document.getElementById('waveText').innerText = currentWave;
-
-    // Caminho
-    ctx.strokeStyle = '#8d6e63'; ctx.lineWidth = 42; ctx.beginPath();
-    ctx.moveTo(path[0].x, path[0].y); path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
-
-    // Templo
-    ctx.fillStyle = '#7f8c8d'; ctx.fillRect(720, 460, 80, 80);
-
-    spots.forEach(s => {
-        // Tronco
-        ctx.fillStyle = '#4e342e'; ctx.beginPath(); ctx.arc(s.x, s.y, 25, 0, Math.PI*2); ctx.fill();
-        
-        if(s.tower) {
-            let attacking = s.tower.timer > s.tower.fireRate - 5;
-            if(s.tower.name === 'Yorph') drawYorph(s.x, s.y, attacking);
-            if(s.tower.name === 'Molovee') drawMolovee(s.x, s.y, attacking);
-            if(s.tower.name === 'Brutáne') drawBrutane(s.x, s.y, attacking);
-            
-            s.tower.timer++;
-            if(s.tower.timer > s.tower.fireRate) {
-                let targets = enemies.filter(en => Math.hypot(en.x - s.x, en.y - s.y) < s.tower.range);
-                let target = targets.find(en => en.isMarked) || targets[0];
-                if(target) {
-                    projectiles.push({x: s.x, y: s.y-25, target, damage: s.tower.damage, color: s.tower.color});
-                    s.tower.timer = 0;
-                }
-            }
-
-            if(s.sellOpen) {
-                ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.arc(s.x+45, s.y-45, 18, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.fillText("X", s.x+40, s.y-40);
-                ctx.fillText("Vender?", s.x+20, s.y-70);
-            }
-        }
-
-        if(s.menuOpen) {
-            ['azul', 'amarela', 'vermelha'].forEach((t, i) => {
-                let bx = s.x + (i-1)*55; let by = s.y - 65;
-                ctx.fillStyle = towerSpecs[t].color; ctx.beginPath(); ctx.arc(bx, by, 20, 0, Math.PI*2); ctx.fill();
-                if(s.selectedType === t) {
-                    ctx.fillStyle = "black"; ctx.fillRect(bx-25, by-55, 50, 20);
-                    ctx.fillStyle = "white"; ctx.font = "12px Arial"; ctx.fillText("$"+towerSpecs[t].price, bx-15, by-40);
-                    ctx.strokeStyle = "white"; ctx.stroke();
-                }
-            });
-        }
-    });
-
-    enemies.forEach((en, i) => {
-        en.update(); drawEnemy(en);
-        if(en.health <= 0) { if(en.health !== -1) money += 35; enemies.splice(i, 1); }
-    });
-
-    projectiles.forEach((p, i) => {
-        let dx = p.target.x - p.x; let dy = p.target.y - p.y;
-        let dist = Math.hypot(dx, dy);
-        p.x += (dx/dist)*10; p.y += (dy/dist)*10;
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
-        if(dist < 10) { p.target.health -= p.damage; projectiles.splice(i, 1); }
-    });
-
-    if(lives <= 0) { alert("O Templo caiu!"); location.reload(); }
-    requestAnimationFrame(loop);
-}
-
-loop();
+update();
 </script>
 </body>
 </html>
