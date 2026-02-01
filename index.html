@@ -205,6 +205,81 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 function startNextWave() {
+    // --- LÓGICA ATUALIZADA DA QUETINA E CLÉRIGO ---
+
+// No início da função startNextWave:
+function startNextWave() {
+    if(enemies.length > 0) return;
+    currentWave++;
+    isNight = currentWave % 2 === 0;
+
+    // Atualiza o ciclo de todas as Quetinas no mapa
+    spots.forEach(s => {
+        if(s.tower && s.tower.name === 'Quetina') {
+            s.tower.qStage++;
+            // Se chegou no estágio 4 (Borboleta pronta para explodir)
+            if(s.tower.qStage >= 4) {
+                triggerButterflyEffect(s.x, s.y);
+                s.tower.qStage = 0; // Reseta para Ovo
+            }
+        }
+    });
+
+    let wavePlan = ['camponês', 'camponês', 'cavaleiro', 'clerigo', 'nobre'];
+    wavePlan.forEach((t, i) => setTimeout(() => enemies.push(new Enemy(t)), i * 1000));
+}
+
+// Nova função para o efeito visual e dano global
+function triggerButterflyEffect(startX, startY) {
+    // Dano em todos os inimigos
+    enemies.forEach(en => {
+        en.health -= 150; // Dano alto por ser um ciclo longo
+    });
+
+    // Cria a animação da onda rosa
+    let radius = 0;
+    function animateShockwave() {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 159, 243, 0.5)";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(startX, startY, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        radius += 20;
+        if(radius < 1000) requestAnimationFrame(animateShockwave);
+    }
+    animateShockwave();
+}
+
+// Ajuste na IA do Clérigo (dentro da classe Enemy)
+performAction() {
+    if(Math.random() > 0.5) {
+        let tSpot = spots.find(s => s.tower);
+        if(tSpot) tSpot.tower.cursed = 120;
+    } else {
+        enemies.forEach(e => { 
+            // Só abençoa se for outro inimigo e estiver perto
+            if(e !== this && Math.hypot(e.x - this.x, e.y - this.y) < 80) {
+                e.blessed = 60; 
+                e.health = Math.min(e.maxHealth, e.health + 20);
+            }
+        });
+    }
+}
+
+// No desenho da Quetina (dentro do update)
+if(t.name === 'Quetina') {
+    let stages = ['#fff', '#000', '#2ecc71', '#ff9ff3']; // Ovo, Lagarta, Casulo, Borboleta
+    ctx.fillStyle = stages[t.qStage];
+    ctx.fillRect(s.x + 18, s.y - 18, 12, 12);
+    // Texto indicativo do estágio para o jogador não se perder
+    ctx.fillStyle = "white";
+    ctx.font = "10px Arial";
+    let labels = ["Ovo", "Lagarta", "Casulo", "Borboleta"];
+    ctx.fillText(labels[t.qStage], s.x + 15, s.y - 25);
+}
     if(enemies.length > 0) return;
     currentWave++; isNight = currentWave % 2 === 0;
     let wavePlan = ['camponês', 'camponês', 'cavaleiro', 'clerigo', 'nobre'];
