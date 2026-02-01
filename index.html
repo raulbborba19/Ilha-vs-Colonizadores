@@ -203,8 +203,7 @@ canvas.addEventListener('mousedown', (e) => {
         }
     });
 });
-
-function startNextWave() {
+    
     // --- LÓGICA ATUALIZADA DA QUETINA E CLÉRIGO ---
 
 // No início da função startNextWave:
@@ -280,12 +279,6 @@ if(t.name === 'Quetina') {
     let labels = ["Ovo", "Lagarta", "Casulo", "Borboleta"];
     ctx.fillText(labels[t.qStage], s.x + 15, s.y - 25);
 }
-    if(enemies.length > 0) return;
-    currentWave++; isNight = currentWave % 2 === 0;
-    let wavePlan = ['camponês', 'camponês', 'cavaleiro', 'clerigo', 'nobre'];
-    wavePlan.forEach((t, i) => setTimeout(() => enemies.push(new Enemy(t)), i * 1000));
-}
-
 update();
 </script>
 </body>
